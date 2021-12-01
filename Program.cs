@@ -27,6 +27,8 @@ builder.Services.AddCors(options =>
 
 var app = builder.Build();
 
+await EnsureDb(app.Services, app.Logger);
+
 //if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -93,6 +95,14 @@ app.MapDelete("/todos/{id}", async (TodoDbContext db, int id) =>
 });
 
 app.Run();
+
+async Task EnsureDb(IServiceProvider services, ILogger logger)
+{
+    logger.LogInformation("Ensuring database exists and is up to date at connection string '{connectionString}'", connectionString);
+
+    using var db = services.CreateScope().ServiceProvider.GetRequiredService<TodoDbContext>();
+    await db.Database.MigrateAsync();
+}
 
 public class TodoDbContext : DbContext
 {
