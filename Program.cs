@@ -3,6 +3,10 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+const string corsName = "mycors";
+builder.Services.AddCors(options => 
+    options.AddPolicy(corsName, policy => { policy.AllowAnyOrigin().AllowAnyHeader().AllowAnyMethod(); }));
+
 var connectionString = builder.Configuration.GetConnectionString("db");
 
 builder.Services.AddEndpointsApiExplorer();
@@ -17,25 +21,17 @@ builder.Services.AddDbContext<TodoDbContext>(options =>
 
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddCors(options => 
-    options.AddDefaultPolicy(builder =>
-    {
-        builder.AllowAnyOrigin()
-            .AllowAnyMethod()
-            .AllowAnyHeader();
-    }));
-
 var app = builder.Build();
 
 await EnsureDb(app.Services, app.Logger);
+
+app.UseCors(corsName);
 
 //if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseCors();
 
 app.MapFallback(() => Results.Redirect("/swagger"));
 
