@@ -1,20 +1,32 @@
+using System.ComponentModel.DataAnnotations;
+using Microsoft.EntityFrameworkCore;
+
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
+var connectionString = builder.Configuration.GetConnectionString("db");
+
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddDbContext<TodoDbContext>(options => 
+    options.UseNpgsql(connectionString, sqlOptions =>
+    {
+        sqlOptions.MigrationsAssembly(typeof(TodoDbContext).Assembly.GetName().Name);
+        sqlOptions.EnableRetryOnFailure(5, TimeSpan.FromSeconds(10), null);
+    })
+    .UseSnakeCaseNamingConvention())
+    .AddDatabaseDeveloperPageExceptionFilter();
+
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddCors(o => o.AddDefaultPolicy(builder =>
-            {
-                builder.AllowAnyOrigin()
-                    .AllowAnyMethod()
-                    .AllowAnyHeader();
-            }));
+builder.Services.AddCors(options => 
+    options.AddDefaultPolicy(builder =>
+    {
+        builder.AllowAnyOrigin()
+            .AllowAnyMethod()
+            .AllowAnyHeader();
+    }));
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
 //if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
@@ -22,30 +34,77 @@ var app = builder.Build();
 }
 
 app.UseCors();
-//app.UseHttpsRedirection();
 
-var summaries = new[]
-{
-    "Freezing", "Bracing", "Chilly", "Cool", "Mild", "Warm", "Balmy", "Hot", "Sweltering", "Scorching"
-};
+app.MapFallback(() => Results.Redirect("/swagger"));
 
-app.MapGet("/weatherforecast", () =>
+app.MapGet("/todos", async (TodoDbContext db) =>
 {
-    var forecast =  Enumerable.Range(1, 5).Select(index =>
-        new WeatherForecast
-        (
-            DateTime.Now.AddDays(index),
-            Random.Shared.Next(-20, 55),
-            summaries[Random.Shared.Next(summaries.Length)]
-        ))
-        .ToArray();
-    return forecast;
-})
-.WithName("GetWeatherForecast");
+    return await db.Todos.ToListAsync();
+});
+
+app.MapGet("/todos/{id}", async (TodoDbContext db, int id) =>
+{
+    return await db.Todos.FindAsync(id) switch
+    {
+        Todo todo => Results.Ok(todo),
+        null => Results.NotFound()
+    };
+});
+
+app.MapPost("/todos", async (TodoDbContext db, Todo todo) =>
+{
+    await db.Todos.AddAsync(todo);
+    await db.SaveChangesAsync();
+
+    return Results.Created($"/todo/{todo.Id}", todo);
+});
+
+app.MapPut("/todos/{id}", async (TodoDbContext db, int id, Todo todo) =>
+{
+    if (id != todo.Id)
+    {
+        return Results.BadRequest();
+    }
+
+    if (!await db.Todos.AnyAsync(x => x.Id == id))
+    {
+        return Results.NotFound();
+    }
+
+    db.Update(todo);
+    await db.SaveChangesAsync();
+
+    return Results.Ok();
+});
+
+
+app.MapDelete("/todos/{id}", async (TodoDbContext db, int id) =>
+{
+    var todo = await db.Todos.FindAsync(id);
+    if (todo is null)
+    {
+        return Results.NotFound();
+    }
+
+    db.Todos.Remove(todo);
+    await db.SaveChangesAsync();
+
+    return Results.Ok();
+});
 
 app.Run();
 
-record WeatherForecast(DateTime Date, int TemperatureC, string? Summary)
+public class TodoDbContext : DbContext
 {
-    public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+    public TodoDbContext(DbContextOptions options) : base(options) { }
+
+    public DbSet<Todo> Todos => Set<Todo>();
+}
+
+public class Todo
+{
+    public int Id { get; set; }
+    [Required]
+    public string? Title { get; set; }
+    public bool IsComplete { get; set; }
 }
