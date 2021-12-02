@@ -35,16 +35,13 @@ app.UseCors(corsName);
 
 app.MapFallback(() => Results.Redirect("/swagger"));
 
-app.MapGet("/todos", async (TodoDbContext db) =>
-{
-    return await db.Todos.ToListAsync();
-});
+app.MapGet("/todos", async (TodoDbContext db) => await db.Todos.ToListAsync());
 
 app.MapGet("/todos/{id}", async (TodoDbContext db, int id) =>
 {
     return await db.Todos.FindAsync(id) switch
     {
-        Todo todo => Results.Ok(todo),
+        { } todo => Results.Ok(todo),
         null => Results.NotFound()
     };
 });
@@ -94,9 +91,9 @@ app.Run();
 
 async Task EnsureDb(IServiceProvider services, ILogger logger)
 {
-    logger.LogInformation("Ensuring database exists and is up to date at connection string '{connectionString}'", connectionString);
+    logger.LogInformation("Ensuring database exists and is up to date at connection string '{ConnectionString}'", connectionString);
 
-    using var db = services.CreateScope().ServiceProvider.GetRequiredService<TodoDbContext>();
+    await using var db = services.CreateScope().ServiceProvider.GetRequiredService<TodoDbContext>();
     await db.Database.MigrateAsync();
 }
 
